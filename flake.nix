@@ -56,6 +56,7 @@
           libxshmfence
           libxtst
           libxi
+          xdotool
           libxrender
           libxinerama
           libxcursor
@@ -116,6 +117,7 @@
                 export NIX_LD="${nixLd}"
                 export NIX_LD_LIBRARY_PATH="${runtimeLibPath}:''${NIX_LD_LIBRARY_PATH:-}"
                 export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
+                export LIBRARY_PATH="${runtimeLibPath}:''${LIBRARY_PATH:-}"
                 export PKG_CONFIG_PATH="${pkgConfigPath}:''${PKG_CONFIG_PATH:-}"
                 export RUST_SRC_PATH="${pkgs.rustPlatform.rustLibSrc}"
                 ${text}
@@ -155,6 +157,7 @@
             export NIX_LD="${nixLd}"
             export NIX_LD_LIBRARY_PATH="${runtimeLibPath}:''${NIX_LD_LIBRARY_PATH:-}"
             export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
+            export LIBRARY_PATH="${runtimeLibPath}:''${LIBRARY_PATH:-}"
             export PKG_CONFIG_PATH="${pkgConfigPath}:''${PKG_CONFIG_PATH:-}"
             export RUST_SRC_PATH="${pkgs.rustPlatform.rustLibSrc}"
             export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share:${pkgs.gtk3}/share:''${XDG_DATA_DIRS:-}"
