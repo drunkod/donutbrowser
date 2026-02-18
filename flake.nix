@@ -1,66 +1,238 @@
 {
-  description = "Donut Browser Development Environment";
+  description = "Donut Browser development environment and quick-start commands";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... }:
+  outputs = { self, nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
-          inherit system overlays;
+          inherit system;
+          config.allowUnfree = true;
         };
+        lib = pkgs.lib;
 
-        # Rust toolchain
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
-        };
+        nodejs =
+          if pkgs ? nodejs_23 then
+            pkgs.nodejs_23
+          else
+            pkgs.nodejs_22;
 
-        # System dependencies for Tauri on Linux
-        libraries = with pkgs; [
+        rustPackages = with pkgs; [
+          cargo
+          clippy
+          rust-analyzer
+          rustc
+          rustfmt
+        ];
+
+        commonLibs = with pkgs; [
           webkitgtk_4_1
+          libsoup_3
+          glib
           gtk3
           cairo
           gdk-pixbuf
-          glib
+          pango
+          atk
+          at-spi2-atk
+          at-spi2-core
           dbus
-          librsvg
-          libsoup_3
+          nss
+          nspr
+          libdrm
+          libgbm
+          libxkbcommon
+          libx11
+          libxcomposite
+          libxdamage
+          libxext
+          libxfixes
+          libxrandr
+          libxcb
+          libxshmfence
+          libxtst
+          libxi
+          libxrender
+          libxinerama
+          libxcursor
+          libxscrnsaver
+          fontconfig
+          freetype
+          harfbuzz
+          zlib
+          stdenv.cc.cc.lib
         ];
 
-        packages = with pkgs; [
-          rustToolchain
-          nodejs_22
-          pnpm
-          pkg-config
-          cargo-tauri
-          openssl
-          # App specific tools
-          biome
-        ] ++ libraries;
+        runtimeLibPath = lib.makeLibraryPath commonLibs;
+        nixLd = pkgs.stdenv.cc.bintools.dynamicLinker;
+        pkgConfigLibs = [
+          pkgs.at-spi2-atk
+          pkgs.at-spi2-core
+          pkgs.cairo
+          pkgs.dbus
+          pkgs.gdk-pixbuf
+          pkgs.glib
+          pkgs.gtk3
+          pkgs.libsoup_3
+          pkgs.libxkbcommon
+          pkgs.openssl
+          pkgs.pango
+          pkgs.harfbuzz
+          pkgs.webkitgtk_4_1
+        ];
+        pkgConfigPath = lib.makeSearchPath "lib/pkgconfig" (
+          pkgConfigLibs ++ map lib.getDev pkgConfigLibs
+        );
 
+        mkApp = name: text:
+          let
+            app = pkgs.writeShellApplication {
+              inherit name;
+              runtimeInputs = with pkgs; [
+                bash
+                coreutils
+                findutils
+                git
+                gnugrep
+                gnused
+                curl
+                gcc
+                pkg-config
+                openssl
+                cargo
+                clippy
+                rustc
+                rustfmt
+                nodejs
+                pnpm
+                cargo-tauri
+              ];
+              text = ''
+                export NODE_ENV=development
+                export NIX_LD="${nixLd}"
+                export NIX_LD_LIBRARY_PATH="${runtimeLibPath}:''${NIX_LD_LIBRARY_PATH:-}"
+                export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
+                export PKG_CONFIG_PATH="${pkgConfigPath}:''${PKG_CONFIG_PATH:-}"
+                export RUST_SRC_PATH="${pkgs.rustPlatform.rustLibSrc}"
+                ${text}
+              '';
+            };
+          in
+          {
+            type = "app";
+            program = "${app}/bin/${name}";
+          };
       in
       {
         devShells.default = pkgs.mkShell {
-          buildInputs = packages;
+          packages = with pkgs; [
+            nodejs
+            pnpm
+            cargo-tauri
+            pkg-config
+            openssl
+            git
+            bashInteractive
+            gnumake
+            clang
+            llvmPackages.bintools
+            python3
+            curl
+            wget
+            unzip
+            zip
+            xz
+            biome
+            docker
+          ] ++ rustPackages ++ commonLibs;
 
           shellHook = ''
-            export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH
-            export XDG_DATA_DIRS=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS
-            
-            echo "🍩 Donut Browser Dev Environment Loaded!"
-            echo "Node: $(node --version)"
-            echo "Rust: $(rustc --version)"
-            echo "Tauri CLI: $(cargo-tauri --version)"
+            export NODE_ENV=development
+            export NIX_LD="${nixLd}"
+            export NIX_LD_LIBRARY_PATH="${runtimeLibPath}:''${NIX_LD_LIBRARY_PATH:-}"
+            export LD_LIBRARY_PATH="${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
+            export PKG_CONFIG_PATH="${pkgConfigPath}:''${PKG_CONFIG_PATH:-}"
+            export RUST_SRC_PATH="${pkgs.rustPlatform.rustLibSrc}"
+            export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share:${pkgs.gtk3}/share:''${XDG_DATA_DIRS:-}"
+
+            echo "Donut Browser dev shell ready."
+            echo "Quick start:"
+            echo "  nix run .#setup"
+            echo "  nix run .#tauri-dev"
+            echo "  nix run .#full-dev"
+            echo "  nix run .#build"
+            echo "  nix run .#test"
           '';
         };
-      }
-    );
+
+        apps.info = mkApp "donut-info" ''
+          set -euo pipefail
+          echo "Node: $(node --version)"
+          echo "pnpm: $(pnpm --version)"
+          echo "Rust: $(rustc --version)"
+          echo "Cargo: $(cargo --version)"
+          echo "Tauri CLI: $(cargo-tauri --version)"
+        '';
+
+        apps.deps = mkApp "donut-deps" ''
+          set -euo pipefail
+          pnpm install
+        '';
+
+        apps.dev = mkApp "donut-dev" ''
+          set -euo pipefail
+          pnpm dev
+        '';
+
+        apps."tauri-dev" = mkApp "donut-tauri-dev" ''
+          set -euo pipefail
+          pnpm tauri dev
+        '';
+
+        apps."full-dev" = mkApp "donut-full-dev" ''
+          set -euo pipefail
+          chmod +x ./scripts/dev.sh
+          ./scripts/dev.sh
+        '';
+
+        apps.build = mkApp "donut-build" ''
+          set -euo pipefail
+          pnpm build
+          (cd src-tauri && cargo build)
+        '';
+
+        apps.start = mkApp "donut-start" ''
+          set -euo pipefail
+          pnpm start
+        '';
+
+        apps.test = mkApp "donut-test" ''
+          set -euo pipefail
+          pnpm format && pnpm lint && pnpm test
+        '';
+
+        apps.setup = mkApp "donut-setup" ''
+          set -euo pipefail
+
+          if [ ! -f "package.json" ]; then
+            echo "package.json not found. Run this from the donutbrowser repo root."
+            exit 1
+          fi
+
+          pnpm install
+          pnpm copy-proxy-binary
+
+          echo "Setup complete."
+          echo "Run the app with:"
+          echo "  nix run .#tauri-dev"
+          echo "Or run full local stack (sync + minio + tauri):"
+          echo "  nix run .#full-dev"
+        '';
+
+        apps.default = self.apps.${system}.setup;
+      });
 }
