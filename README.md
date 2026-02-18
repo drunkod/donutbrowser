@@ -86,6 +86,13 @@ Have questions or want to contribute? We'd love to hear from you!
 	<tbody>
 		<tr>
             <td align="center">
+                <a href="https://github.com/drunkod">
+                    <img src="https://avatars.githubusercontent.com/u/9677471?v=4" width="100;" alt="drunkod"/>
+                    <br />
+                    <sub><b>drunkod</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/zhom">
                     <img src="https://avatars.githubusercontent.com/u/2717306?v=4" width="100;" alt="zhom"/>
                     <br />
