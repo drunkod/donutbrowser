@@ -40,5 +40,10 @@ jobs:
       - name: Check setup app is exposed
         run: nix eval .#apps.x86_64-linux.setup.program --raw
 
+      - name: Run flake setup app
+        env:
+          CI: "true"
+        run: nix run .#setup
+
       - name: Run flake info app
         run: nix run .#info
