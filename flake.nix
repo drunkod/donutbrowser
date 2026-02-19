@@ -63,7 +63,13 @@
           libxscrnsaver
           fontconfig
           freetype
+          fribidi
           harfbuzz
+          expat
+          libglvnd
+          libgpg-error
+          e2fsprogs
+          gmp
           zlib
           stdenv.cc.cc.lib
         ];
@@ -88,6 +94,94 @@
         pkgConfigPath = lib.makeSearchPath "lib/pkgconfig" (
           pkgConfigLibs ++ map lib.getDev pkgConfigLibs
         );
+        releaseVersion = "0.14.5";
+        releaseAppImage =
+          if system == "x86_64-linux" then
+            pkgs.fetchurl {
+              url = "https://github.com/zhom/donutbrowser/releases/download/v${releaseVersion}/Donut_0.14.5_amd64.AppImage";
+              hash = "sha256-YC/BkJnSqspJWNnvUEYyR/vx0L/wK4UO0n+llB0z25o=";
+            }
+          else if system == "aarch64-linux" then
+            pkgs.fetchurl {
+              url = "https://github.com/zhom/donutbrowser/releases/download/v${releaseVersion}/Donut_0.14.5_aarch64.AppImage";
+              hash = "sha256-4+Ra/jEkt2SdPLHrRx8oHew7ZR9fUgfg3JG7xKOwKYw=";
+            }
+          else
+            null;
+        releaseUnpacked =
+          if releaseAppImage != null then
+            pkgs.stdenvNoCC.mkDerivation {
+              pname = "donut-release-unpacked";
+              version = releaseVersion;
+              src = releaseAppImage;
+              dontUnpack = true;
+              nativeBuildInputs = [ pkgs.xz ];
+              installPhase = ''
+                runHook preInstall
+
+                cp "$src" ./donut.AppImage
+                chmod +x ./donut.AppImage
+                ./donut.AppImage --appimage-extract >/dev/null
+
+                mkdir -p "$out"
+                cp -a ./squashfs-root "$out/"
+
+                runHook postInstall
+              '';
+            }
+          else
+            null;
+        releaseWrapped =
+          if releaseAppImage != null then
+            pkgs.appimageTools.wrapType2 {
+              pname = "donut";
+              version = releaseVersion;
+              src = releaseAppImage;
+              extraPkgs = _: commonLibs;
+              extraInstallCommands = ''
+                for bin in "$out"/bin/*; do
+                  if [ -f "$bin" ]; then
+                    mv "$bin" "$out/bin/donut-release"
+                    break
+                  fi
+                done
+              '';
+            }
+          else
+            null;
+        releaseLauncher =
+          if releaseUnpacked != null then
+            pkgs.writeShellApplication {
+              name = "donut-release-start";
+              runtimeInputs = with pkgs; [
+                coreutils
+                xdg-utils
+              ];
+              text = ''
+                set -euo pipefail
+
+                if [ -x "${releaseWrapped}/bin/donut-release" ]; then
+                  if "${releaseWrapped}/bin/donut-release" "$@"; then
+                    exit 0
+                  fi
+                  echo "Wrapped AppImage failed, retrying with direct AppRun..." >&2
+                fi
+
+                export LD_LIBRARY_PATH="${releaseUnpacked}/squashfs-root/usr/lib:${releaseUnpacked}/squashfs-root/usr/lib64:${runtimeLibPath}:''${LD_LIBRARY_PATH:-}"
+                export NIX_LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
+                export LIBRARY_PATH="$LD_LIBRARY_PATH"
+                export XDG_DATA_DIRS="${releaseUnpacked}/squashfs-root/usr/share:''${XDG_DATA_DIRS:-}"
+                exec "${releaseUnpacked}/squashfs-root/AppRun" "$@"
+              '';
+            }
+          else
+            pkgs.writeShellApplication {
+              name = "donut-release-start";
+              text = ''
+                echo "Release launcher is supported only on Linux (x86_64/aarch64)."
+                exit 1
+              '';
+            };
 
         mkApp = name: text:
           let
@@ -169,6 +263,7 @@
             echo "  nix run .#full-dev"
             echo "  nix run .#build"
             echo "  nix run .#test"
+            echo "  nix run .#release-start"
           '';
         };
 
@@ -235,6 +330,11 @@
           echo "Or run full local stack (sync + minio + tauri):"
           echo "  nix run .#full-dev"
         '';
+
+        apps."release-start" = {
+          type = "app";
+          program = "${releaseLauncher}/bin/donut-release-start";
+        };
 
         apps.default = self.apps.${system}.setup;
       });
